@@ -1,0 +1,82 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{DA947095-66CC-478E-A02C-87567FDE53AD}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>Smite.API</RootNamespace>
+    <AssemblyName>Smite.API</AssemblyName>
+    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <SccProjectName>SAK</SccProjectName>
+    <SccLocalPath>SAK</SccLocalPath>
+    <SccAuxPath>SAK</SccAuxPath>
+    <SccProvider>SAK</SccProvider>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Web.Extensions" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Xml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="ILogInterface.cs" />
+    <Compile Include="ResponseTypes\ItemDescription.cs" />
+    <Compile Include="ResponseTypes\Items.cs" />
+    <Compile Include="ResponseTypes\AbilityDescription.cs" />
+    <Compile Include="ResponseTypes\AbilityRoot.cs" />
+    <Compile Include="ResponseTypes\DataUsed.cs" />
+    <Compile Include="ResponseTypes\DemoDetails.cs" />
+    <Compile Include="ResponseTypes\Friends.cs" />
+    <Compile Include="ResponseTypes\GodRanks.cs" />
+    <Compile Include="ResponseTypes\Gods.cs" />
+    <Compile Include="ResponseTypes\GameInfo.cs" />
+    <Compile Include="ResponseTypes\LeagueSeasons.cs" />
+    <Compile Include="ResponseTypes\MatchDetails.cs" />
+    <Compile Include="ResponseTypes\MatchHistory.cs" />
+    <Compile Include="ResponseTypes\MatchIds.cs" />
+    <Compile Include="ResponseTypes\MenuItem.cs" />
+    <Compile Include="ResponseTypes\Player.cs" />
+    <Compile Include="ResponseTypes\QueueStats.cs" />
+    <Compile Include="ResponseTypes\RankItem.cs" />
+    <Compile Include="ResponseTypes\SessionInfo.cs" />
+    <Compile Include="ResponseTypes\TeamDetails.cs" />
+    <Compile Include="ResponseTypes\TeamPlayers.cs" />
+    <Compile Include="ResponseTypes\Teams.cs" />
+    <Compile Include="ResponseTypes\TopMatches.cs" />
+    <Compile Include="Smite.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
+       Other similar extension points exist, see Microsoft.Common.targets.
+  <Target Name="BeforeBuild">
+  </Target>
+  <Target Name="AfterBuild">
+  </Target>
+  -->
+</Project>
