@@ -95,7 +95,7 @@ namespace Smite.API
             _authKey = AuthKey;
             Log = log;
         }
-
+        #region Synchronous Calls
         public static void CreateSession()
         {
             _timestamp = DateTime.UtcNow.ToString("yyyyMMddHHmmss");
@@ -103,12 +103,13 @@ namespace Smite.API
             _createSession = true;
             sessionCreated = DateTime.UtcNow;
         }
-
+       
         public static List<Gods> GetGods(eLanguageCode languageCode)
         {
             return GetResponse<List<Gods>>("getgods", true, languageCode);
         }
 
+        
         public static DataUsed GetDataUsed()
         {
             return GetResponse<List<DataUsed>>("getdataused", true)[0];
@@ -157,10 +158,6 @@ namespace Smite.API
             return GetResponse<List<TeamDetails>>("getteamdetails", true, clanid);
         }
 
-        public async static Task<List<MatchHistory>> GetMatchHistoryAsync(int playerID)
-        {
-            return await GetResponseAsync<List<MatchHistory>>("getmatchhistory", true, playerID);
-        }
         public static List<MatchHistory> GetTeamMatchHistory(int clanid)
         {
             return GetResponse<List<MatchHistory>>("getteammatchhistory", true, clanid);
@@ -226,17 +223,7 @@ namespace Smite.API
         public static List<QueueStats> GetQueueStats(int playerID, QueueType queue) 
         {
             return GetResponse<List<QueueStats>>("getqueuestats", true, playerID, queue);
-        }
-
-        public static string GetGodIconUrl(Gods god)
-        {
-            return string.Format("http://www.hirezstudios.com/images/default-source/smite-god-icons/{0}.jpg", god.id);
-        }
-
-        public static string GetGodCardUrl(Gods god)
-        {
-            return string.Format("http://www.hirezstudios.com/images/default-source/smite-god-cards/{0}c.jpg", god.id);
-        }
+        }     
 
         private static string GetMD5Hash(string input)
         {
@@ -251,10 +238,6 @@ namespace Smite.API
             return sb.ToString();
         }
 
-        private static async Task<T> GetResponseAsync<T>(string service, bool requiresSession, params dynamic[] vars)
-        {
-            return default(T);
-        }
         private static T GetResponse<T>(string service, bool requiresSession, params dynamic[] vars)
         {
             if (requiresSession) //Requires session, make sure its available.
@@ -262,7 +245,7 @@ namespace Smite.API
                 //Check to see if a session was even created.
                 if (!_createSession)
                 {
-                    CreateSession();                    
+                    CreateSession();
                 }
                 //First we need to verify it hasn't been over 15 minutes.
                 TimeSpan sp = DateTime.UtcNow.Subtract(sessionCreated);
@@ -273,6 +256,14 @@ namespace Smite.API
                     CreateSession();
                 }
             }
+            if (_session == "")
+            {
+                CreateSession();
+            }
+
+            if (_session == "")
+                throw new Exception("Session not being generated!");
+
             string signature = GetMD5Hash(_devId + service + _authKey + _timestamp);
 
             string urlKey = requiresSession ? _apiUrl + service + "json" + "/" + _devId + "/" + signature + "/" + _session + "/" + _timestamp : _apiUrl + service + "json" + "/" + _devId + "/" + signature + "/" + _timestamp;
@@ -293,7 +284,7 @@ namespace Smite.API
                 }
             }
 
-            WebRequest request = WebRequest.Create(urlKey);            
+            WebRequest request = WebRequest.Create(urlKey);
             WebResponse response = request.GetResponse();
             Stream dataStream = response.GetResponseStream();
             StreamReader reader = new StreamReader(dataStream);
@@ -313,12 +304,235 @@ namespace Smite.API
                 //Log the error!
                 Log.LogError(string.Format("Session timed out: Service: {0} - Session Alive: {1} minutes\r\n", service, sp.Minutes));
                 CreateSession();
-                return GetResponse<T>(service,requiresSession,vars); //Return again with the values.
+                return GetResponse<T>(service, requiresSession, vars); //Return again with the values.
+            }
+            return g;
+
+
+
+        }
+#endregion
+
+        #region Asynchronous Calls
+        public static async Task CreateSessionAsync()
+        {
+            _timestamp = DateTime.UtcNow.ToString("yyyyMMddHHmmss");
+            var item = await GetResponseAsync<SessionInfo>("createsession", false);
+            _session = item.session_id;
+            _createSession = true;
+            sessionCreated = DateTime.UtcNow;
+        }
+        private static async Task<T> GetResponseAsync<T>(string service, bool requiresSession, params dynamic[] vars)
+        {
+            if (requiresSession) //Requires session, make sure its available.
+            {
+                //Check to see if a session was even created.
+                if (!_createSession)
+                {
+                    CreateSession();
+                }
+                //First we need to verify it hasn't been over 15 minutes.
+                TimeSpan sp = DateTime.UtcNow.Subtract(sessionCreated);
+
+                if (sp.Minutes >= 15)  //Set to 5 until they fix timeout issue.
+                {
+                    //Create a new Session
+                    await CreateSessionAsync();
+                }
+            }
+            if (_session == "")
+            {
+                await CreateSessionAsync();
             }
 
-            return g;
+            if (_session == "")
+                throw new Exception("Session not being generated!");
+
+            string signature = GetMD5Hash(_devId + service + _authKey + _timestamp);
+
+            string urlKey = requiresSession ? _apiUrl + service + "json" + "/" + _devId + "/" + signature + "/" + _session + "/" + _timestamp : _apiUrl + service + "json" + "/" + _devId + "/" + signature + "/" + _timestamp;
+
+            foreach (var p in vars)
+            {
+                if (p is DateTime)
+                {
+                    urlKey += "/" + p.ToString("yyyyMMdd");
+                }
+                else if (p is QueueType || p is TierType || p is eLanguageCode)
+                {
+                    urlKey += "/" + ((int)p).ToString();
+                }
+                else
+                {
+                    urlKey += "/" + p.ToString();
+                }
+            }
+
+
+            string responseFromServer = await GetJsonStringAsync(urlKey);
+             
+            
+            var jss = new JavaScriptSerializer();
+            var g = await jss.DeserializeAsync<T>(responseFromServer);
+
+            
+            if (!IsSessionAlive(g))
+            {
+                TimeSpan sp = DateTime.UtcNow.Subtract(sessionCreated);
+                //Log the error!
+                Log.LogError(string.Format("Session timed out: Service: {0} - Session Alive: {1} minutes\r\n", service, sp.Minutes));
+                CreateSession();
+                var item = GetResponseAsync<T>(service, requiresSession, vars); //Return again with the values.
+                return await item;
+            }
+            else
+            {
+                return g;
+            }
+        }
+        public async static Task<DataUsed> GetDataUsedAsync()
+        {
+            var item = await GetResponseAsync<List<DataUsed>>("getdataused", true);
+            return item[0];
         }
 
+        public static Task<List<DemoDetails>> GetDemoDetailsAsync(int matchID)
+        {
+            return GetResponseAsync<List<DemoDetails>>("getdemodetails", true, matchID);
+        }
+
+        public static Task<List<Friends>> GetFriendsAsync(string playerName)
+        {
+            return GetResponseAsync<List<Friends>>("getfriends", true, playerName);
+        }
+        public static Task<List<Friends>> GetFriendsAsync(int playerID)
+        {
+            return GetResponseAsync<List<Friends>>("getfriends", true, playerID);
+        }
+
+        public static Task<List<GodRanks>> GetGodRanksAsync(string playerName)
+        {
+            return GetResponseAsync<List<GodRanks>>("getgodranks", true, playerName);
+        }
+        public static Task<List<GodRanks>> GetGodRanksAsync(int playerID)
+        {
+            return GetResponseAsync<List<GodRanks>>("getgodranks", true, playerID);
+        }
+
+        public static Task<List<Items>> GetItemsAsync(eLanguageCode languageCode)
+        {
+            return GetResponseAsync<List<Items>>("getitems", true, languageCode);
+        }
+
+        public static Task<List<MatchDetails>> GetMatchDetailsAsync(int matchID)
+        {
+            return GetResponseAsync<List<MatchDetails>>("getmatchdetails", true, matchID);
+        }
+
+        public static Task<List<MatchIds>> GetMatchIdsByQueueAsync(QueueType queue, DateTime date)
+        {
+            return GetResponseAsync<List<MatchIds>>("getmatchidsbyqueue", true, queue, date);
+        }
+
+        public static Task<List<TeamDetails>> GetTeamDetailsAsync(int clanid)
+        {
+            return GetResponseAsync<List<TeamDetails>>("getteamdetails", true, clanid);
+        }
+
+        public static Task<List<MatchHistory>> GetMatchHistoryAsync(int playerID)
+        {
+            return GetResponseAsync<List<MatchHistory>>("getmatchhistory", true, playerID);
+        }
+        public static Task<List<MatchHistory>> GetTeamMatchHistoryAsync(int clanid)
+        {
+            return GetResponseAsync<List<MatchHistory>>("getteammatchhistory", true, clanid);
+        }
+
+        public static Task<List<TeamPlayers>> GetTeamPlayersAsync(int clanid)
+        {
+            return GetResponseAsync<List<TeamPlayers>>("getteamplayers", true, clanid);
+        }
+
+        public static Task<List<TopMatches>> GetTopMatchesAsync()
+        {
+            return GetResponseAsync<List<TopMatches>>("gettopmatches", true);
+        }
+
+        public static Task<List<Teams>> SearchTeamsAsync(string searchTeam)
+        {
+            return GetResponseAsync<List<Teams>>("searchteams", true, searchTeam);
+        }
+
+        public static Task<List<GameInfo>> GetLeagueLeaderBoardAsync(QueueType queue, TierType tier, int season)
+        {
+            return GetResponseAsync<List<GameInfo>>("getleagueleaderboard", true, queue, tier, season);
+        }
+
+        public static Task<List<LeagueSeasons>> GetLeagueSeasonsAsync(QueueType queue)
+        {
+            return GetResponseAsync<List<LeagueSeasons>>("getleagueseasons", true, queue);
+        }
+        public static Task<List<MatchHistory>> GetMatchHistoryAsync(string playerName)
+        {
+            return GetResponseAsync<List<MatchHistory>>("getmatchhistory", true, playerName);
+        }      
+
+        public static async Task<Player> GetPlayerAsync(int playerID)
+        {
+            var items = await GetResponseAsync<List<Player>>("getplayer", true, playerID);
+
+            if (items.Count > 0)
+                return items[0];
+            else
+                return null;
+        }
+        public static async Task<Player> GetPlayerAsync(string playerName)
+        {
+            var items = await GetResponseAsync<List<Player>>("getplayer", true, playerName);
+
+            if (items.Count > 0)
+                return items[0];
+            else
+                return null;
+
+        }
+
+        public static Task<List<QueueStats>> GetQueueStatsAsync(string playerName, QueueType queue)
+        {
+            return GetResponseAsync<List<QueueStats>>("getqueuestats", true, playerName, queue);
+        }
+        public static Task<List<Gods>> GetGodsAsync(eLanguageCode languageCode)
+        {
+            return GetResponseAsync<List<Gods>>("getgods", true, languageCode);
+        }
+        public static  Task<List<QueueStats>> GetQueueStatsAsync(int playerID, QueueType queue)
+        {
+            return GetResponseAsync<List<QueueStats>>("getqueuestats", true, playerID, queue);
+        }
+        public static Task<T> DeserializeAsync<T>(this JavaScriptSerializer js, string data) {
+            return Task.Run(() =>
+            {
+                return js.Deserialize<T>(data);
+            });
+        }
+        public static Task<Stream> GetRequestStreamAsync(this WebRequest request)
+        {
+            return Task.Factory.FromAsync<Stream>(
+                request.BeginGetRequestStream, request.EndGetRequestStream, null);
+        }
+        
+        private static async Task<string> GetJsonStringAsync(string urlKey)
+        {
+            HttpWebRequest request = HttpWebRequest.CreateHttp(urlKey);
+            WebResponse response = await request.GetResponseAsync();            
+            StreamReader reader = new StreamReader(response.GetResponseStream());
+
+            string responseString = await reader.ReadToEndAsync();
+            return responseString;
+
+        }
+        
+        #endregion
         private static bool IsSessionAlive(object g)        
         {
             string prop;
@@ -349,59 +563,59 @@ namespace Smite.API
             return true;
         }
 
-        private static string GetResponseString(string service, bool requiresSession, params dynamic[] vars)
-        {
-            if (requiresSession) //Requires session, make sure its available.
-            {
-                //First we need to verify it hasn't been over 15 minutes.
-                TimeSpan sp = DateTime.Now.Subtract(sessionCreated);
+        //private static string GetResponseString(string service, bool requiresSession, params dynamic[] vars)
+        //{
+        //    if (requiresSession) //Requires session, make sure its available.
+        //    {
+        //        //First we need to verify it hasn't been over 15 minutes.
+        //        TimeSpan sp = DateTime.Now.Subtract(sessionCreated);
 
-                if (sp.Minutes >= 15)
-                {
-                    //Create a new Session
-                    CreateSession();
-                }
-            }
-            string signature = GetMD5Hash(_devId + service + _authKey + _timestamp);
+        //        if (sp.Minutes >= 15)
+        //        {
+        //            //Create a new Session
+        //            CreateSession();
+        //        }
+        //    }
+        //    string signature = GetMD5Hash(_devId + service + _authKey + _timestamp);
 
-            string urlKey = requiresSession ? _apiUrl + service + "json" + "/" + _devId + "/" + signature + "/" + _session + "/" + _timestamp : _apiUrl + service + "json" + "/" + _devId + "/" + signature + "/" + _timestamp;
+        //    string urlKey = requiresSession ? _apiUrl + service + "json" + "/" + _devId + "/" + signature + "/" + _session + "/" + _timestamp : _apiUrl + service + "json" + "/" + _devId + "/" + signature + "/" + _timestamp;
 
-            foreach (var p in vars)
-            {
-                if (p is DateTime)
-                {
-                    urlKey += "/" + p.ToString("yyyyMMdd");
-                }
-                else if (p is QueueType || p is TierType || p is eLanguageCode)
-                {
-                    urlKey += "/" + ((int)p).ToString();
-                }
-                else
-                {
-                    urlKey += "/" + p.ToString();
-                }
-            }
-            string responseFromServer;
+        //    foreach (var p in vars)
+        //    {
+        //        if (p is DateTime)
+        //        {
+        //            urlKey += "/" + p.ToString("yyyyMMdd");
+        //        }
+        //        else if (p is QueueType || p is TierType || p is eLanguageCode)
+        //        {
+        //            urlKey += "/" + ((int)p).ToString();
+        //        }
+        //        else
+        //        {
+        //            urlKey += "/" + p.ToString();
+        //        }
+        //    }
+        //    string responseFromServer;
 
-            try
-            {
-                WebRequest request = WebRequest.Create(urlKey);
-                request.Method = "GET";
-                WebResponse response = request.GetResponse();
-                Stream dataStream = response.GetResponseStream();
-                StreamReader reader = new StreamReader(dataStream);
+        //    try
+        //    {
+        //        WebRequest request = WebRequest.Create(urlKey);
+        //        request.Method = "GET";
+        //        WebResponse response = request.GetResponse();
+        //        Stream dataStream = response.GetResponseStream();
+        //        StreamReader reader = new StreamReader(dataStream);
 
-                responseFromServer = reader.ReadToEnd();
+        //        responseFromServer = reader.ReadToEnd();
 
-                reader.Close();
-                response.Close();
-            }
-            catch (Exception ex)
-            {
-                responseFromServer = ex.Message;
-            }
+        //        reader.Close();
+        //        response.Close();
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        responseFromServer = ex.Message;
+        //    }
 
-            return responseFromServer;
-        }
+        //    return responseFromServer;
+        //}
     }
 }
