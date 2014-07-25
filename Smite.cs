@@ -75,6 +75,10 @@ namespace Smite.API
     
     public static class SmiteAPI
     {
+        private static JavaScriptSerializer _JSSerializer = new JavaScriptSerializer();
+        private const int _maxRetries = 10;
+        private const int _retryDelayMS = 1000;
+        private const int _maxSessionMinutes = 15;
         private static string _devId;
         private static string _authKey;
         private static bool _createSession;
@@ -314,42 +318,71 @@ namespace Smite.API
 #endregion
 
         #region Asynchronous Calls
-        public static async Task CreateSessionAsync()
+        public static async Task<bool> CreateSessionAsync()
         {
-            _timestamp = DateTime.UtcNow.ToString("yyyyMMddHHmmss");
-            var item = await GetResponseAsync<SessionInfo>("createsession", false);
-            _session = item.session_id;
-            _createSession = true;
-            sessionCreated = DateTime.UtcNow;
+            bool success = false;
+            try
+            {
+                _timestamp = DateTime.UtcNow.ToString("yyyyMMddHHmmss");
+                string signature = GetMD5Hash(string.Format("{0}createSession{1}{2}", _devId, _authKey, _timestamp));
+                string urlKey = string.Format("{0}createsessionjson/{1}/{2}/{3}", _apiUrl, _devId, signature, _timestamp);
+                string responseFromServer = await GetJsonStringAsync(urlKey);
+
+                SessionInfo result = await _JSSerializer.DeserializeAsync<SessionInfo>(responseFromServer);
+                var item = await GetResponseAsync<SessionInfo>("createsession", false);
+                _session = item.session_id;
+                _createSession = true;
+                sessionCreated = DateTime.UtcNow;
+                success = IsSessionAlive(result);
+                if(success == false)
+                {
+                     Log.LogError(string.Format("Session initiation failed - Last session alive: {0} minutes\r\n", DateTime.UtcNow.Subtract(sessionCreated)));
+                }
+            }
+            catch (Exception e)
+            {
+                Log.LogError(string.Format("Async session error: {0}", e.ToString()));
+            }
+           
+            return success;
         }
         private static async Task<T> GetResponseAsync<T>(string service, bool requiresSession, params dynamic[] vars)
         {
-            if (requiresSession) //Requires session, make sure its available.
-            {
-                //Check to see if a session was even created.
-                if (!_createSession)
-                {
-                    CreateSession();
-                }
-                //First we need to verify it hasn't been over 15 minutes.
-                TimeSpan sp = DateTime.UtcNow.Subtract(sessionCreated);
+            // the Smite API always requires a session, so validate the session timeout.
+            T result;
 
-                if (sp.Minutes >= 15)  //Set to 5 until they fix timeout issue.
+            TimeSpan sp = DateTime.UtcNow.Subtract(sessionCreated);
+            bool activeSession = false;
+            if (sp.Minutes >= _maxSessionMinutes || string.IsNullOrEmpty(_session))
+            {
+                activeSession = await CreateSessionAsync();
+
+
+                if(activeSession == false) // retry for a limited number of attempts over a specified delay.
                 {
-                    //Create a new Session
-                    await CreateSessionAsync();
+                    for (int i = 0; i < _maxRetries; i++)
+                    {
+                        System.Threading.Thread.Sleep(_retryDelayMS);
+                        activeSession = await CreateSessionAsync();
+                        if (activeSession)
+                        {
+                            break;
+                        }
+                        else if (i + 1 == _maxRetries)
+                        {
+                            Log.LogError(string.Format("Get Response failed, retry limit reached - Limit: {0} Delay(ms): {1}\r\n", _maxRetries, _retryDelayMS));
+                        }
+                        else
+                        {
+                            
+                        }
+                        
+                    }
                 }
             }
-            if (_session == "")
-            {
-                await CreateSessionAsync();
-            }
-
-            if (_session == "")
-                throw new Exception("Session not being generated!");
-
+            // our session is active, just continue on.
+            
             string signature = GetMD5Hash(_devId + service + _authKey + _timestamp);
-
             string urlKey = requiresSession ? _apiUrl + service + "json" + "/" + _devId + "/" + signature + "/" + _session + "/" + _timestamp : _apiUrl + service + "json" + "/" + _devId + "/" + signature + "/" + _timestamp;
 
             foreach (var p in vars)
@@ -370,25 +403,9 @@ namespace Smite.API
 
 
             string responseFromServer = await GetJsonStringAsync(urlKey);
-             
-            
-            var jss = new JavaScriptSerializer();
-            var g = await jss.DeserializeAsync<T>(responseFromServer);
+            result = await _JSSerializer.DeserializeAsync<T>(responseFromServer);
 
-            
-            if (!IsSessionAlive(g))
-            {
-                TimeSpan sp = DateTime.UtcNow.Subtract(sessionCreated);
-                //Log the error!
-                Log.LogError(string.Format("Session timed out: Service: {0} - Session Alive: {1} minutes\r\n", service, sp.Minutes));
-                CreateSession();
-                var item = GetResponseAsync<T>(service, requiresSession, vars); //Return again with the values.
-                return await item;
-            }
-            else
-            {
-                return g;
-            }
+            return result;
         }
         public async static Task<DataUsed> GetDataUsedAsync()
         {
